@@ -26,9 +26,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build package
-        run: npm run build
-
       - name: Publish to npm
         # Only run publish step if this is a tagged commit
         if: startsWith(github.ref, 'refs/tags/v')

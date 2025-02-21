@@ -11,10 +11,6 @@
     "discord.js": "^14.18.0",
     "dotenv": "^16.4.7"
   },
-  "scripts": {
-    "test": "echo \"No tests defined\" && exit 0",
-    "build": "echo \"No build step needed\" && exit 0"
-  },
   "keywords": [
     "discord",
     "bot",
