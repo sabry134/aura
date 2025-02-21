@@ -4,13 +4,16 @@
   "description": "A CLI tool to easily set up and manage your Discord bot.",
   "main": "server.js",
   "bin": {
-    "aura": "./server.js"
+    "auraflux": "./server.js"
   },
   "dependencies": {
-    "auraflux": "^1.0.1",
     "commander": "^10.0.1",
     "discord.js": "^14.18.0",
     "dotenv": "^16.4.7"
+  },
+  "scripts": {
+    "test": "echo \"No tests defined\" && exit 0",
+    "build": "echo \"No build step needed\" && exit 0"
   },
   "keywords": [
     "discord",
