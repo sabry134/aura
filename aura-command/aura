@@ -58,7 +58,22 @@ restart() {
 
 case "$1" in
     help)
-        echo "Aura CLI - Help Menu"
+        echo -e "\n✨ Aura CLI - Help Menu ✨\n"
+        echo -e "Here are the available commands for Aura CLI:\n"
+
+        echo -e "🔹 \033[1mrun [file.js] [-b]\033[0m"
+        echo -e "   - Runs the specified file. Optionally, use the '-b' flag to run it in the background.\n"
+
+        echo -e "🔹 \033[1mrestart [file.js] [-b]\033[0m"
+        echo -e "   - Restarts the bot. It will first stop the current process and then re-run the specified file.\n"
+
+        echo -e "🔹 \033[1muptime\033[0m"
+        echo -e "   - Shows the uptime of the bot.\n"
+
+        echo -e "ℹ️ For more information on each command, you can use the 'help' option next to the command.\n"
+
+        echo -e "Example usage:\n"
+        echo -e "  aura run server.js\n  aura restart server.js\n  aura uptime\n"
         ;;
     run)
         if [ "$#" -lt 2 ]; then
