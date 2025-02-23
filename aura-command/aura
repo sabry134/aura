@@ -1,137 +1,177 @@
 #!/bin/sh
 
-START_TIME_FILE="$HOME/.aura_start_time"  # File to store the start time
-RUNNING_PID_FILE="$HOME/.aura_running_pid"  # File to store the running process ID
+# Files to store state
+START_TIME_FILE="$HOME/.aura_start_time"   # Stores when the bot was started
+RUNNING_PID_FILE="$HOME/.aura_running_pid"   # Stores the process ID of the running bot
 
 error() {
     echo "Error: $1" >&2
     exit 1
 }
 
+# Cleanup for foreground processes (not used for background pm2 mode)
 cleanup() {
     if [ -f "$START_TIME_FILE" ]; then
-        rm "$START_TIME_FILE"  # Remove the start time file on exit
+        rm "$START_TIME_FILE"
         echo "Bot stopped, timer reset."
     fi
-
     if [ -f "$RUNNING_PID_FILE" ]; then
-        rm "$RUNNING_PID_FILE"  # Remove the running PID file on exit
+        rm "$RUNNING_PID_FILE"
     fi
 }
 
+# Display uptime based on saved start time
 uptime() {
     if [ ! -f "$START_TIME_FILE" ]; then
         echo "Error: Bot has not started yet."
         exit 1
     fi
-
-    START_TIME=$(cat "$START_TIME_FILE")  # Read the start time from the file
+    START_TIME=$(cat "$START_TIME_FILE")
     CURRENT_TIME=$(date +%s)
     DIFF=$((CURRENT_TIME - START_TIME))
-
-    # Convert seconds into days, hours, minutes, and seconds
     DAYS=$((DIFF / 86400))
     HOURS=$(( (DIFF % 86400) / 3600 ))
     MINUTES=$(( (DIFF % 3600) / 60 ))
     SECONDS=$((DIFF % 60))
-
-    # Display uptime in a readable format
     echo "Bot uptime: ${DAYS}d ${HOURS}h ${MINUTES}m ${SECONDS}s"
 }
 
-restart() {
+# Function to run the bot; BACKGROUND is 1 for pm2 mode, 0 for normal
+run_bot() {
+    FILE="$1"
+    BACKGROUND="$2"
+    if [ ! -f "$FILE" ]; then
+        error "File '$FILE' not found."
+    fi
+
+    # Record the start time (persistently)
+    date +%s > "$START_TIME_FILE"
+
+    if [ "$BACKGROUND" -eq 1 ]; then
+        command -v pm2 >/dev/null 2>&1 || error "pm2 is required but not installed. Install it with 'npm install -g pm2'"
+        echo "Running '$FILE' in background using pm2..."
+        # Use a unique pm2 process name based on the file
+        if pm2 list | grep -q "aura-$FILE"; then
+            echo "Bot is already running in the background using pm2."
+        else
+            pm2 start "$FILE" --name "aura-$FILE"
+        fi
+        PM2_PID=$(pm2 pid "aura-$FILE")
+        echo "$PM2_PID" > "$RUNNING_PID_FILE"
+    else
+        echo "Running '$FILE' normally..."
+        # For foreground mode, trap cleanup so that when node exits the timer is cleared.
+        trap cleanup EXIT
+        node "$FILE" &
+        echo "$!" > "$RUNNING_PID_FILE"
+        wait
+    fi
+}
+
+# Function to restart the bot (requires file; mode is preserved by -b flag)
+restart_bot() {
+    FILE="$1"
+    MODE=""
+    if [ "$2" = "-b" ]; then
+        MODE="-b"
+    fi
+
+    # Stop current process if exists
     if [ -f "$RUNNING_PID_FILE" ]; then
         PID=$(cat "$RUNNING_PID_FILE")
         if kill -0 "$PID" > /dev/null 2>&1; then
             echo "Stopping the bot..."
-            kill "$PID"  # Stop the running process
-            wait "$PID"  # Ensure the process stops completely
+            kill "$PID"
+            wait "$PID" 2>/dev/null
             echo "Bot stopped."
         fi
-        rm "$RUNNING_PID_FILE"  # Remove the running PID file
+        rm "$RUNNING_PID_FILE"
     fi
 
-    # Restart the bot
     echo "Restarting the bot..."
-
-    # Check if pm2 is managing the process
-    if command -v pm2 >/dev/null 2>&1; then
-        # Gracefully restart using pm2
-        pm2 restart aura-server.js || error "Failed to restart bot with pm2."
-        echo "Bot restarted using pm2."
+    if [ "$MODE" = "-b" ]; then
+        command -v pm2 >/dev/null 2>&1 || error "pm2 is required but not installed. Install it with 'npm install -g pm2'"
+        if pm2 list | grep -q "aura-$FILE"; then
+            pm2 restart "aura-$FILE" || error "Failed to restart bot with pm2."
+        else
+            pm2 start "$FILE" --name "aura-$FILE"
+        fi
+        PM2_PID=$(pm2 pid "aura-$FILE")
+        echo "$PM2_PID" > "$RUNNING_PID_FILE"
     else
-        echo "Running 'server.js' normally..."
-        node "$2" &
-        echo "$!" > "$RUNNING_PID_FILE"  # Store the process ID
+        node "$FILE" &
+        echo "$!" > "$RUNNING_PID_FILE"
+        trap cleanup EXIT
+        wait
     fi
+    date +%s > "$START_TIME_FILE"
 }
 
+# Function to stop the bot (no file argument required)
+stop_bot() {
+    if [ -f "$RUNNING_PID_FILE" ]; then
+        PID=$(cat "$RUNNING_PID_FILE")
+        if kill -0 "$PID" > /dev/null 2>&1; then
+            echo "Stopping the bot..."
+            kill "$PID"
+            wait "$PID" 2>/dev/null
+            echo "Bot stopped."
+        fi
+        rm "$RUNNING_PID_FILE"
+    fi
+    # Also, if pm2 is used, delete processes with names starting with "aura-"
+    if command -v pm2 >/dev/null 2>&1; then
+        if pm2 list | grep -q "aura-"; then
+            echo "Stopping PM2-managed bot..."
+            pm2 delete all 2>/dev/null
+        fi
+    fi
+    [ -f "$START_TIME_FILE" ] && rm "$START_TIME_FILE"
+}
+
+# Command-line interface
 case "$1" in
     help)
         echo -e "\n✨ Aura CLI - Help Menu ✨\n"
-        echo -e "Here are the available commands for Aura CLI:\n"
-
+        echo -e "Available commands:\n"
         echo -e "🔹 \033[1mrun [file.js] [-b]\033[0m"
-        echo -e "   - Runs the specified file. Optionally, use the '-b' flag to run it in the background using pm2.\n"
-
+        echo -e "   Runs the specified file. Use '-b' to run in the background (with pm2).\n"
         echo -e "🔹 \033[1mrestart [file.js] [-b]\033[0m"
-        echo -e "   - Restarts the bot. It will first stop the current process and then re-run the specified file.\n"
-
+        echo -e "   Stops the current bot and restarts it with the specified file.\n"
+        echo -e "🔹 \033[1mstop\033[0m"
+        echo -e "   Stops the bot, regardless of how it was started.\n"
         echo -e "🔹 \033[1muptime\033[0m"
-        echo -e "   - Shows the uptime of the bot.\n"
-
-        echo -e "ℹ️ For more information on each command, you can use the 'help' option next to the command.\n"
-
+        echo -e "   Displays the uptime of the bot.\n"
         echo -e "Example usage:\n"
-        echo -e "  aura run server.js\n  aura restart server.js\n  aura uptime\n"
+        echo -e "  aura run server.js\n  aura run server.js -b\n  aura restart server.js\n  aura restart server.js -b\n  aura stop\n  aura uptime\n"
         ;;
     run)
         if [ "$#" -lt 2 ]; then
             error "Usage: aura run [file].js [-b]"
         fi
-
-        FILE=$2
-        BACKGROUND=0
-
+        FILE="$2"
+        BG=0
         if [ "$3" = "-b" ]; then
-            BACKGROUND=1
+            BG=1
         fi
-
-        if [ ! -f "$FILE" ]; then
-            error "File '$FILE' not found."
+        run_bot "$FILE" "$BG"
+        ;;
+    restart)
+        if [ "$#" -lt 2 ]; then
+            error "Usage: aura restart [file].js [-b]"
         fi
-
-        # Save the start time to the file
-        date +%s > "$START_TIME_FILE"
-
-        # Ensure cleanup happens on script exit (when the bot is stopped or aborted)
-        trap cleanup EXIT
-
-        if [ "$BACKGROUND" -eq 1 ]; then
-            command -v pm2 >/dev/null 2>&1 || error "pm2 is required but not installed. Install it with 'npm install -g pm2'"
-            echo "Running '$FILE' in background using pm2..."
-
-            # Check if the process is already running on pm2
-            if pm2 list | grep -q "$FILE"; then
-                echo "Bot is already running in the background using pm2."
-            else
-                pm2 start "$FILE" --name "aura-$FILE"
-            fi
-
-            # Store the pm2 process ID
-            PM2_PID=$(pm2 pid "$FILE")
-            echo "$PM2_PID" > "$RUNNING_PID_FILE"
-        else
-            echo "Running '$FILE' normally..."
-            node "$FILE" &
-            echo "$!" > "$RUNNING_PID_FILE"  # Store the process ID
+        FILE="$2"
+        ARG=""
+        if [ "$3" = "-b" ]; then
+            ARG="-b"
         fi
+        restart_bot "$FILE" "$ARG"
+        ;;
+    stop)
+        stop_bot
         ;;
     uptime)
         uptime
-        ;;
-    restart)
-        restart "$@"  # Pass all arguments to the restart function
         ;;
     *)
         echo "Unknown command: $1"
