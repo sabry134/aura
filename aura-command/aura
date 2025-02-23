@@ -8,7 +8,9 @@ ERROR_LOG_FILE="$HOME/.aura_errors.log"          # Error log file (assumed)
 GUILDS_FILE="$HOME/.aura_guilds"                 # Fallback guild list file (assumed)
 WEBHOOK_FILE="$HOME/.aura_webhooks"              # List of webhook URLs (assumed)
 TOKEN_FILE="$HOME/.aura_token"                   # Bot token storage
-CLIENT_ID_FILE="$HOME/.aura_client_id"           # Bot client ID storage
+
+# File to store the last-used bot file and background flag.
+BOT_CONFIG_FILE="$HOME/.aura_bot_config"         # Contains: [file] [bg_flag] (bg_flag is 1 if background, 0 otherwise)
 
 error() {
     echo "Error: $1" >&2
@@ -16,7 +18,7 @@ error() {
 }
 
 ####################################
-# Token and Client ID Management
+# Token Management
 ####################################
 
 # Ensures a token is set; if not, exits with an error.
@@ -41,24 +43,6 @@ remove_token() {
         echo "Token removed."
     else
         echo "No token is set."
-    fi
-}
-
-# Set the bot client ID
-set_clientid() {
-    CLIENTID="$1"
-    [ -z "$CLIENTID" ] && error "Usage: aura set-clientid [client_id]"
-    echo "$CLIENTID" > "$CLIENT_ID_FILE"
-    echo "Client ID set."
-}
-
-# Remove the bot client ID
-remove_clientid() {
-    if [ -f "$CLIENT_ID_FILE" ]; then
-        rm "$CLIENT_ID_FILE"
-        echo "Client ID removed."
-    else
-        echo "No client ID is set."
     fi
 }
 
@@ -95,12 +79,14 @@ uptime_cmd() {
 # Run the bot file; BACKGROUND=1 uses pm2, else foreground.
 run_bot() {
     FILE="$1"
-    BACKGROUND="$2"
+    BG="$2"
     if [ ! -f "$FILE" ]; then
         error "File '$FILE' not found."
     fi
     date +%s > "$START_TIME_FILE"
-    if [ "$BACKGROUND" -eq 1 ]; then
+    # Save the bot configuration (file and bg flag)
+    echo "$FILE $BG" > "$BOT_CONFIG_FILE"
+    if [ "$BG" -eq 1 ]; then
         command -v pm2 >/dev/null 2>&1 || error "pm2 is required but not installed. Install it with 'npm install -g pm2'"
         echo "Running '$FILE' in background using pm2..."
         if pm2 list | grep -q "aura-$FILE"; then
@@ -122,10 +108,7 @@ run_bot() {
 # Restart the bot with the provided file and mode (-b for background)
 restart_bot() {
     FILE="$1"
-    MODE=""
-    if [ "$2" = "-b" ]; then
-        MODE="-b"
-    fi
+    MODE="$2"  # "-b" if background, else empty
     if [ -f "$RUNNING_PID_FILE" ]; then
         PID=$(cat "$RUNNING_PID_FILE")
         if kill -0 "$PID" >/dev/null 2>&1; then
@@ -272,7 +255,7 @@ setstatus() {
     echo "$STATUS" > "$HOME/.aura_status"
 }
 
-# Set bot activity (e.g., Playing, Watching, Listening) with debug info
+# Set bot activity (e.g., Playing, Watching, Listening) and automatically restart the bot
 setactivity() {
     require_token
     TYPE="$1"
@@ -281,9 +264,17 @@ setactivity() {
     [ -z "$TYPE" ] || [ -z "$MESSAGE" ] && error "Usage: aura setactivity [type] [message]"
     echo "Setting bot activity: Type='$TYPE', Message='$MESSAGE'"
     echo "$TYPE: $MESSAGE" > "$HOME/.aura_activity"
-    echo "DEBUG: Activity file content:" 
-    cat "$HOME/.aura_activity"
-    echo "Activity set. Restart the bot to apply changes."
+    echo "Activity set. Restarting bot to apply changes..."
+    if [ -f "$BOT_CONFIG_FILE" ]; then
+        read LAST_FILE LAST_BG < "$BOT_CONFIG_FILE"
+        if [ "$LAST_BG" -eq 1 ]; then
+            restart_bot "$LAST_FILE" "-b"
+        else
+            restart_bot "$LAST_FILE" ""
+        fi
+    else
+        echo "No previous bot configuration found. Please run 'aura run [file]' first."
+    fi
 }
 
 # Remove bot activity setting
@@ -340,14 +331,12 @@ webhook_remove() {
     fi
 }
 
-# List all guilds the bot is in via Discord API (if permitted) with debug info
+# List all guilds the bot is in via Discord API (if permitted) without extra debug info
 guilds() {
     require_token
     TOKEN=$(cat "$TOKEN_FILE")
     echo "Fetching guilds from Discord API..."
     RESPONSE=$(curl -s -H "Authorization: Bot $TOKEN" "https://discord.com/api/v10/users/@me/guilds")
-    echo "DEBUG: Raw guilds response:" >&2
-    echo "$RESPONSE" >&2
     if command -v jq >/dev/null 2>&1; then
         echo "$RESPONSE" | jq .
     else
@@ -397,7 +386,7 @@ case "$1" in
         echo -e "🔹 \033[1msetstatus [status]\033[0m"
         echo -e "   Sets the bot’s presence (e.g., online, idle, dnd).\n"
         echo -e "🔹 \033[1msetactivity [type] [message]\033[0m"
-        echo -e "   Sets bot activity (e.g., Playing, Watching, Listening) with debug info.\n"
+        echo -e "   Sets bot activity (e.g., Playing, Watching, Listening) and automatically restarts the bot.\n"
         echo -e "🔹 \033[1mremove-activity\033[0m"
         echo -e "   Removes the bot’s activity setting.\n"
         echo -e "🔹 \033[1mblacklistguild [guild_id]\033[0m"
@@ -407,19 +396,15 @@ case "$1" in
         echo -e "🔹 \033[1mwebhook [add|remove] [url]\033[0m"
         echo -e "   Adds or removes a webhook for bot logs.\n"
         echo -e "🔹 \033[1mguilds\033[0m"
-        echo -e "   Lists all guilds the bot is in (via Discord API if permitted) with debug info.\n"
+        echo -e "   Lists all guilds the bot is in (via Discord API if permitted).\n"
         echo -e "🔹 \033[1mleaveguild [guild_id]\033[0m"
         echo -e "   Makes the bot leave a specific server.\n"
         echo -e "🔹 \033[1mset-token [token]\033[0m"
         echo -e "   Sets the bot's token (mandatory for many commands).\n"
         echo -e "🔹 \033[1mremove-token\033[0m"
         echo -e "   Removes the bot's token.\n"
-        echo -e "🔹 \033[1mset-clientid [client_id]\033[0m"
-        echo -e "   Sets the bot's client ID (if required).\n"
-        echo -e "🔹 \033[1mremove-clientid\033[0m"
-        echo -e "   Removes the bot's client ID.\n"
         echo -e "Example usage:\n"
-        echo -e "  aura run server.js\n  aura run server.js -b\n  aura restart server.js\n  aura restart server.js -b\n  aura stop\n  aura uptime\n  aura debug\n  aura status\n  aura logs 30\n  aura errors\n  aura setstatus idle\n  aura setactivity Playing \"Chess with AI\"\n  aura remove-activity\n  aura blacklistguild 123456789\n  aura whitelistguild 123456789\n  aura webhook add https://example.com/webhook\n  aura webhook remove https://example.com/webhook\n  aura guilds\n  aura leaveguild 123456789\n  aura set-token YOUR_TOKEN_HERE\n  aura remove-token\n  aura set-clientid YOUR_CLIENT_ID\n  aura remove-clientid\n"
+        echo -e "  aura run server.js\n  aura run server.js -b\n  aura restart server.js\n  aura restart server.js -b\n  aura stop\n  aura uptime\n  aura debug\n  aura status\n  aura logs 30\n  aura errors\n  aura setstatus idle\n  aura setactivity Playing \"Chess with AI\"\n  aura remove-activity\n  aura blacklistguild 123456789\n  aura whitelistguild 123456789\n  aura webhook add https://example.com/webhook\n  aura webhook remove https://example.com/webhook\n  aura guilds\n  aura leaveguild 123456789\n  aura set-token YOUR_TOKEN_HERE\n  aura remove-token\n"
         ;;
     run)
         [ "$#" -lt 2 ] && error "Usage: aura run [file].js [-b]"
@@ -489,12 +474,6 @@ case "$1" in
         ;;
     remove-token)
         remove_token
-        ;;
-    set-clientid)
-        set_clientid "$2"
-        ;;
-    remove-clientid)
-        remove_clientid
         ;;
     *)
         echo "Unknown command: $1"
