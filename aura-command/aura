@@ -272,7 +272,7 @@ setstatus() {
     echo "$STATUS" > "$HOME/.aura_status"
 }
 
-# Set bot activity (e.g., Playing, Watching, Listening)
+# Set bot activity (e.g., Playing, Watching, Listening) with debug info
 setactivity() {
     require_token
     TYPE="$1"
@@ -281,7 +281,19 @@ setactivity() {
     [ -z "$TYPE" ] || [ -z "$MESSAGE" ] && error "Usage: aura setactivity [type] [message]"
     echo "Setting bot activity: Type='$TYPE', Message='$MESSAGE'"
     echo "$TYPE: $MESSAGE" > "$HOME/.aura_activity"
+    echo "DEBUG: Activity file content:" 
+    cat "$HOME/.aura_activity"
     echo "Activity set. Restart the bot to apply changes."
+}
+
+# Remove bot activity setting
+remove_activity() {
+    if [ -f "$HOME/.aura_activity" ]; then
+        rm "$HOME/.aura_activity"
+        echo "Activity removed."
+    else
+        echo "No activity set."
+    fi
 }
 
 # Blacklist a guild (ban a server from using the bot)
@@ -328,13 +340,14 @@ webhook_remove() {
     fi
 }
 
-# List all guilds the bot is in via Discord API (if possible)
+# List all guilds the bot is in via Discord API (if permitted) with debug info
 guilds() {
     require_token
     TOKEN=$(cat "$TOKEN_FILE")
     echo "Fetching guilds from Discord API..."
     RESPONSE=$(curl -s -H "Authorization: Bot $TOKEN" "https://discord.com/api/v10/users/@me/guilds")
-    # If jq is available, pretty-print the JSON; otherwise, print raw JSON.
+    echo "DEBUG: Raw guilds response:" >&2
+    echo "$RESPONSE" >&2
     if command -v jq >/dev/null 2>&1; then
         echo "$RESPONSE" | jq .
     else
@@ -347,7 +360,6 @@ leaveguild() {
     require_token
     GUILD_ID="$1"
     [ -z "$GUILD_ID" ] && error "Usage: aura leaveguild [guild_id]"
-    # This command assumes your bot supports leaving a guild via an API call.
     echo "Making the bot leave guild '$GUILD_ID'..."
     RESPONSE=$(curl -s -X DELETE "https://discord.com/api/v10/guilds/$GUILD_ID" \
       -H "Authorization: Bot $(cat "$TOKEN_FILE")")
@@ -385,7 +397,9 @@ case "$1" in
         echo -e "🔹 \033[1msetstatus [status]\033[0m"
         echo -e "   Sets the bot’s presence (e.g., online, idle, dnd).\n"
         echo -e "🔹 \033[1msetactivity [type] [message]\033[0m"
-        echo -e "   Sets bot activity (e.g., Playing, Watching, Listening).\n"
+        echo -e "   Sets bot activity (e.g., Playing, Watching, Listening) with debug info.\n"
+        echo -e "🔹 \033[1mremove-activity\033[0m"
+        echo -e "   Removes the bot’s activity setting.\n"
         echo -e "🔹 \033[1mblacklistguild [guild_id]\033[0m"
         echo -e "   Bans a server from using the bot.\n"
         echo -e "🔹 \033[1mwhitelistguild [guild_id]\033[0m"
@@ -393,7 +407,7 @@ case "$1" in
         echo -e "🔹 \033[1mwebhook [add|remove] [url]\033[0m"
         echo -e "   Adds or removes a webhook for bot logs.\n"
         echo -e "🔹 \033[1mguilds\033[0m"
-        echo -e "   Lists all guilds the bot is in (via Discord API if permitted).\n"
+        echo -e "   Lists all guilds the bot is in (via Discord API if permitted) with debug info.\n"
         echo -e "🔹 \033[1mleaveguild [guild_id]\033[0m"
         echo -e "   Makes the bot leave a specific server.\n"
         echo -e "🔹 \033[1mset-token [token]\033[0m"
@@ -405,7 +419,7 @@ case "$1" in
         echo -e "🔹 \033[1mremove-clientid\033[0m"
         echo -e "   Removes the bot's client ID.\n"
         echo -e "Example usage:\n"
-        echo -e "  aura run server.js\n  aura run server.js -b\n  aura restart server.js\n  aura restart server.js -b\n  aura stop\n  aura uptime\n  aura debug\n  aura status\n  aura logs 30\n  aura errors\n  aura setstatus idle\n  aura setactivity Playing \"Chess with AI\"\n  aura blacklistguild 123456789\n  aura whitelistguild 123456789\n  aura webhook add https://example.com/webhook\n  aura webhook remove https://example.com/webhook\n  aura guilds\n  aura leaveguild 123456789\n  aura set-token YOUR_TOKEN_HERE\n  aura remove-token\n  aura set-clientid YOUR_CLIENT_ID\n  aura remove-clientid\n"
+        echo -e "  aura run server.js\n  aura run server.js -b\n  aura restart server.js\n  aura restart server.js -b\n  aura stop\n  aura uptime\n  aura debug\n  aura status\n  aura logs 30\n  aura errors\n  aura setstatus idle\n  aura setactivity Playing \"Chess with AI\"\n  aura remove-activity\n  aura blacklistguild 123456789\n  aura whitelistguild 123456789\n  aura webhook add https://example.com/webhook\n  aura webhook remove https://example.com/webhook\n  aura guilds\n  aura leaveguild 123456789\n  aura set-token YOUR_TOKEN_HERE\n  aura remove-token\n  aura set-clientid YOUR_CLIENT_ID\n  aura remove-clientid\n"
         ;;
     run)
         [ "$#" -lt 2 ] && error "Usage: aura run [file].js [-b]"
@@ -445,6 +459,9 @@ case "$1" in
         ;;
     setactivity)
         setactivity "$2" "$3"
+        ;;
+    remove-activity)
+        remove_activity
         ;;
     blacklistguild)
         blacklistguild "$2"
