@@ -246,51 +246,6 @@ errors() {
     fi
 }
 
-
-# Blacklist a guild (ban a server from using the bot)
-blacklistguild() {
-    require_token
-    GUILD_ID="$1"
-    [ -z "$GUILD_ID" ] && error "Usage: aura blacklistguild [guild_id]"
-    echo "$GUILD_ID" >> "$HOME/.aura_blacklist"
-    echo "Guild '$GUILD_ID' added to blacklist."
-}
-
-# Remove a guild from the blacklist
-whitelistguild() {
-    require_token
-    GUILD_ID="$1"
-    [ -z "$GUILD_ID" ] && error "Usage: aura whitelistguild [guild_id]"
-    if [ -f "$HOME/.aura_blacklist" ]; then
-        grep -v "^$GUILD_ID$" "$HOME/.aura_blacklist" > "$HOME/.aura_blacklist.tmp" && mv "$HOME/.aura_blacklist.tmp" "$HOME/.aura_blacklist"
-        echo "Guild '$GUILD_ID' removed from blacklist."
-    else
-        echo "Blacklist file not found."
-    fi
-}
-
-# Add a webhook URL for bot logs
-webhook_add() {
-    require_token
-    URL="$1"
-    [ -z "$URL" ] && error "Usage: aura webhook add [url]"
-    echo "$URL" >> "$WEBHOOK_FILE"
-    echo "Webhook '$URL' added."
-}
-
-# Remove a webhook URL from the bot
-webhook_remove() {
-    require_token
-    URL="$1"
-    [ -z "$URL" ] && error "Usage: aura webhook remove [url]"
-    if [ -f "$WEBHOOK_FILE" ]; then
-        grep -v "^$URL$" "$WEBHOOK_FILE" > "$WEBHOOK_FILE.tmp" && mv "$HOME/.aura_webhooks.tmp" "$WEBHOOK_FILE"
-        echo "Webhook '$URL' removed."
-    else
-        echo "No webhook file found."
-    fi
-}
-
 # List all guilds the bot is in via Discord API (if permitted)
 guilds() {
     require_token
@@ -340,12 +295,6 @@ case "$1" in
         echo -e "   Fetches the latest logs from the bot (default: 20 lines).\n"
         echo -e "🔹 \033[1merrors\033[0m"
         echo -e "   Shows the latest errors and stack traces.\n"
-        echo -e "🔹 \033[1mblacklistguild [guild_id]\033[0m"
-        echo -e "   Bans a server from using the bot.\n"
-        echo -e "🔹 \033[1mwhitelistguild [guild_id]\033[0m"
-        echo -e "   Removes a server from the blacklist.\n"
-        echo -e "🔹 \033[1mwebhook [add|remove] [url]\033[0m"
-        echo -e "   Adds or removes a webhook for bot logs.\n"
         echo -e "🔹 \033[1mguilds\033[0m"
         echo -e "   Lists all guilds the bot is in (via Discord API if permitted).\n"
         echo -e "🔹 \033[1mleaveguild [guild_id]\033[0m"
@@ -355,7 +304,7 @@ case "$1" in
         echo -e "🔹 \033[1mremove-token\033[0m"
         echo -e "   Removes the bot's token.\n"
         echo -e "Example usage:\n"
-        echo -e "  aura run server.js\n  aura run server.js -b\n  aura restart server.js\n  aura restart server.js -b\n  aura stop\n  aura uptime\n  aura debug\n  aura status\n  aura logs 30\n  aura errors\n  aura blacklistguild 123456789\n  aura whitelistguild 123456789\n  aura webhook add https://example.com/webhook\n  aura webhook remove https://example.com/webhook\n  aura guilds\n  aura leaveguild 123456789\n  aura set-token YOUR_TOKEN_HERE\n  aura remove-token\n"
+        echo -e "  aura run server.js\n  aura run server.js -b\n  aura restart server.js\n  aura restart server.js -b\n  aura stop\n  aura uptime\n  aura debug\n  aura status\n  aura logs 30\n  aura errors\n  aura guilds\n  aura leaveguild 123456789\n  aura set-token YOUR_TOKEN_HERE\n  aura remove-token\n"
         ;;
     run)
         [ "$#" -lt 2 ] && error "Usage: aura run [file].js [-b]"
