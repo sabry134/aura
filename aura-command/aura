@@ -1,6 +1,7 @@
 #!/bin/sh
 
 START_TIME_FILE="$HOME/.aura_start_time"  # File to store the start time
+RUNNING_PID_FILE="$HOME/.aura_running_pid"  # File to store the running process ID
 
 error() {
     echo "Error: $1" >&2
@@ -11,6 +12,10 @@ cleanup() {
     if [ -f "$START_TIME_FILE" ]; then
         rm "$START_TIME_FILE"  # Remove the start time file on exit
         echo "Bot stopped, timer reset."
+    fi
+
+    if [ -f "$RUNNING_PID_FILE" ]; then
+        rm "$RUNNING_PID_FILE"  # Remove the running PID file on exit
     fi
 }
 
@@ -32,6 +37,23 @@ uptime() {
 
     # Display uptime in a readable format
     echo "Bot uptime: ${DAYS}d ${HOURS}h ${MINUTES}m ${SECONDS}s"
+}
+
+restart() {
+    if [ -f "$RUNNING_PID_FILE" ]; then
+        PID=$(cat "$RUNNING_PID_FILE")
+        if kill -0 "$PID" > /dev/null 2>&1; then
+            echo "Stopping the bot..."
+            kill "$PID"  # Stop the running process
+            wait "$PID"  # Ensure the process stops completely
+            echo "Bot stopped."
+        fi
+        rm "$RUNNING_PID_FILE"  # Remove the running PID file
+    fi
+
+    # Restart the bot
+    echo "Restarting the bot..."
+    aura run "$2" "$3"  # Restart the run command with the same arguments
 }
 
 case "$1" in
@@ -64,13 +86,21 @@ case "$1" in
             command -v pm2 >/dev/null 2>&1 || error "pm2 is required but not installed. Install it with 'npm install -g pm2'"
             echo "Running '$FILE' in background using pm2..."
             pm2 start "$FILE" --name "aura-$FILE"
+
+            # Store the pm2 process ID
+            PM2_PID=$(pm2 pid "$FILE")
+            echo "$PM2_PID" > "$RUNNING_PID_FILE"
         else
             echo "Running '$FILE' normally..."
-            node "$FILE"
+            node "$FILE" &
+            echo "$!" > "$RUNNING_PID_FILE"  # Store the process ID
         fi
         ;;
     uptime)
         uptime
+        ;;
+    restart)
+        restart "$@"
         ;;
     *)
         echo "Unknown command: $1"
