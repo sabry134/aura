@@ -100,7 +100,7 @@ case "$1" in
         uptime
         ;;
     restart)
-        restart "$@"
+        restart "$@"  # Pass all arguments to the restart function
         ;;
     *)
         echo "Unknown command: $1"
