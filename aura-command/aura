@@ -355,7 +355,7 @@ case "$1" in
         echo -e "🔹 \033[1mremove-token\033[0m"
         echo -e "   Removes the bot's token.\n"
         echo -e "Example usage:\n"
-        echo -e "  aura run server.js\n  aura run server.js -b\n  aura restart server.js\n  aura restart server.js -b\n  aura stop\n  aura uptime\n  aura debug\n  aura status\n  aura logs 30\n  aura errors\n  aura setstatus idle\n  aura setactivity Playing \"Chess with AI\"\n  aura remove-activity\n  aura blacklistguild 123456789\n  aura whitelistguild 123456789\n  aura webhook add https://example.com/webhook\n  aura webhook remove https://example.com/webhook\n  aura guilds\n  aura leaveguild 123456789\n  aura set-token YOUR_TOKEN_HERE\n  aura remove-token\n"
+        echo -e "  aura run server.js\n  aura run server.js -b\n  aura restart server.js\n  aura restart server.js -b\n  aura stop\n  aura uptime\n  aura debug\n  aura status\n  aura logs 30\n  aura errors\n  aura blacklistguild 123456789\n  aura whitelistguild 123456789\n  aura webhook add https://example.com/webhook\n  aura webhook remove https://example.com/webhook\n  aura guilds\n  aura leaveguild 123456789\n  aura set-token YOUR_TOKEN_HERE\n  aura remove-token\n"
         ;;
     run)
         [ "$#" -lt 2 ] && error "Usage: aura run [file].js [-b]"
