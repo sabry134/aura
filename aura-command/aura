@@ -1,26 +1,59 @@
 #!/bin/sh
 
-# Files to store state
-START_TIME_FILE="$HOME/.aura_start_time"   # Stores when the bot was started
-RUNNING_PID_FILE="$HOME/.aura_running_pid"   # Stores the process ID of the running bot
+# Files to store state and configuration
+START_TIME_FILE="$HOME/.aura_start_time"       # When the bot was started
+RUNNING_PID_FILE="$HOME/.aura_running_pid"       # Process ID of the running bot
+LOG_FILE="$HOME/.aura_bot.log"                   # Bot log file (assumed)
+ERROR_LOG_FILE="$HOME/.aura_errors.log"          # Error log file (assumed)
+GUILDS_FILE="$HOME/.aura_guilds"                 # List of guilds (assumed)
+WEBHOOK_FILE="$HOME/.aura_webhooks"              # List of webhook URLs (assumed)
+TOKEN_FILE="$HOME/.aura_token"                   # Bot token storage
 
 error() {
     echo "Error: $1" >&2
     exit 1
 }
 
-# Cleanup for foreground processes (not used for background pm2 mode)
-cleanup() {
-    if [ -f "$START_TIME_FILE" ]; then
-        rm "$START_TIME_FILE"
-        echo "Bot stopped, timer reset."
-    fi
-    if [ -f "$RUNNING_PID_FILE" ]; then
-        rm "$RUNNING_PID_FILE"
+####################################
+# Token Management
+####################################
+
+# Ensures a token is set; if not, exits with an error.
+require_token() {
+    if [ ! -f "$TOKEN_FILE" ]; then
+        error "Bot token is not set. Use 'aura set-token [token]' to set the token."
     fi
 }
 
-# Display uptime based on saved start time
+# Set the bot token
+set_token() {
+    TOKEN="$1"
+    [ -z "$TOKEN" ] && error "Usage: aura set-token [token]"
+    echo "$TOKEN" > "$TOKEN_FILE"
+    echo "Token set."
+}
+
+# Remove the bot token
+remove_token() {
+    if [ -f "$TOKEN_FILE" ]; then
+        rm "$TOKEN_FILE"
+        echo "Token removed."
+    else
+        echo "No token is set."
+    fi
+}
+
+####################################
+# Utility Functions
+####################################
+
+# Cleanup for foreground processes
+cleanup() {
+    [ -f "$START_TIME_FILE" ] && { rm "$START_TIME_FILE"; echo "Bot stopped, timer reset."; }
+    [ -f "$RUNNING_PID_FILE" ] && rm "$RUNNING_PID_FILE"
+}
+
+# Calculate and display bot uptime
 uptime() {
     if [ ! -f "$START_TIME_FILE" ]; then
         echo "Error: Bot has not started yet."
@@ -36,21 +69,21 @@ uptime() {
     echo "Bot uptime: ${DAYS}d ${HOURS}h ${MINUTES}m ${SECONDS}s"
 }
 
-# Function to run the bot; BACKGROUND is 1 for pm2 mode, 0 for normal
+####################################
+# Bot Control Functions
+####################################
+
+# Run the bot file; BACKGROUND=1 uses pm2, else foreground.
 run_bot() {
     FILE="$1"
     BACKGROUND="$2"
     if [ ! -f "$FILE" ]; then
         error "File '$FILE' not found."
     fi
-
-    # Record the start time (persistently)
     date +%s > "$START_TIME_FILE"
-
     if [ "$BACKGROUND" -eq 1 ]; then
         command -v pm2 >/dev/null 2>&1 || error "pm2 is required but not installed. Install it with 'npm install -g pm2'"
         echo "Running '$FILE' in background using pm2..."
-        # Use a unique pm2 process name based on the file
         if pm2 list | grep -q "aura-$FILE"; then
             echo "Bot is already running in the background using pm2."
         else
@@ -60,7 +93,6 @@ run_bot() {
         echo "$PM2_PID" > "$RUNNING_PID_FILE"
     else
         echo "Running '$FILE' normally..."
-        # For foreground mode, trap cleanup so that when node exits the timer is cleared.
         trap cleanup EXIT
         node "$FILE" &
         echo "$!" > "$RUNNING_PID_FILE"
@@ -68,18 +100,16 @@ run_bot() {
     fi
 }
 
-# Function to restart the bot (requires file; mode is preserved by -b flag)
+# Restart the bot with the provided file and mode (-b for background)
 restart_bot() {
     FILE="$1"
     MODE=""
     if [ "$2" = "-b" ]; then
         MODE="-b"
     fi
-
-    # Stop current process if exists
     if [ -f "$RUNNING_PID_FILE" ]; then
         PID=$(cat "$RUNNING_PID_FILE")
-        if kill -0 "$PID" > /dev/null 2>&1; then
+        if kill -0 "$PID" >/dev/null 2>&1; then
             echo "Stopping the bot..."
             kill "$PID"
             wait "$PID" 2>/dev/null
@@ -87,7 +117,6 @@ restart_bot() {
         fi
         rm "$RUNNING_PID_FILE"
     fi
-
     echo "Restarting the bot..."
     if [ "$MODE" = "-b" ]; then
         command -v pm2 >/dev/null 2>&1 || error "pm2 is required but not installed. Install it with 'npm install -g pm2'"
@@ -107,11 +136,11 @@ restart_bot() {
     date +%s > "$START_TIME_FILE"
 }
 
-# Function to stop the bot (no file argument required)
+# Stop the bot (no file required)
 stop_bot() {
     if [ -f "$RUNNING_PID_FILE" ]; then
         PID=$(cat "$RUNNING_PID_FILE")
-        if kill -0 "$PID" > /dev/null 2>&1; then
+        if kill -0 "$PID" >/dev/null 2>&1; then
             echo "Stopping the bot..."
             kill "$PID"
             wait "$PID" 2>/dev/null
@@ -119,7 +148,6 @@ stop_bot() {
         fi
         rm "$RUNNING_PID_FILE"
     fi
-    # Also, if pm2 is used, delete processes with names starting with "aura-"
     if command -v pm2 >/dev/null 2>&1; then
         if pm2 list | grep -q "aura-"; then
             echo "Stopping PM2-managed bot..."
@@ -129,7 +157,184 @@ stop_bot() {
     [ -f "$START_TIME_FILE" ] && rm "$START_TIME_FILE"
 }
 
-# Command-line interface
+####################################
+# Bot Info Functions
+####################################
+
+# Display internal debugging information
+debug_info() {
+    echo "----- Bot Debug Information -----"
+    if [ -f "$START_TIME_FILE" ]; then
+        START_TIME=$(cat "$START_TIME_FILE")
+        echo "Start Time (epoch): $START_TIME"
+        echo "Uptime: $(uptime)"
+    else
+        echo "Start Time: Not set (bot may not be running)"
+    fi
+    if [ -f "$RUNNING_PID_FILE" ]; then
+        echo "Running PID: $(cat "$RUNNING_PID_FILE")"
+    else
+        echo "Running PID: Not available"
+    fi
+    if command -v pm2 >/dev/null 2>&1; then
+        echo "PM2 Process List:"
+        pm2 list
+    else
+        echo "PM2: Not installed"
+    fi
+    echo "---------------------------------"
+}
+
+# Show status: uptime, process resource usage, system load, and ping
+status() {
+    echo "----- Bot Status -----"
+    if [ -f "$START_TIME_FILE" ]; then
+        uptime_info=$(uptime)
+        echo "$uptime_info"
+    else
+        echo "Bot uptime: Not available (bot may not be running)"
+    fi
+    if [ -f "$RUNNING_PID_FILE" ]; then
+        PID=$(cat "$RUNNING_PID_FILE")
+        if kill -0 "$PID" 2>/dev/null; then
+            proc_usage=$(ps -p "$PID" -o %cpu,%mem --no-headers)
+            echo "Process CPU and Memory usage (%CPU, %MEM): $proc_usage"
+        else
+            echo "Process is not running."
+        fi
+    else
+        echo "Process PID not found."
+    fi
+    sys_load=$(uptime | awk -F'load average:' '{ print $2 }')
+    echo "System load averages:$sys_load"
+    if command -v ping >/dev/null 2>&1; then
+        ping_out=$(ping -c 1 google.com | grep 'time=')
+        if [ -n "$ping_out" ]; then
+            ping_time=$(echo "$ping_out" | sed -n 's/.*time=\([0-9.]*\) ms.*/\1/p')
+            echo "Ping to google.com: ${ping_time} ms"
+        else
+            echo "Ping: Not available."
+        fi
+    else
+        echo "Ping command not available."
+    fi
+    echo "----------------------"
+}
+
+####################################
+# Additional Bot Commands
+####################################
+
+# Fetch latest logs from the bot (default: 20 lines)
+logs() {
+    LINES="${1:-20}"
+    if [ -f "$LOG_FILE" ]; then
+        tail -n "$LINES" "$LOG_FILE"
+    else
+        echo "No logs available."
+    fi
+}
+
+# Show latest errors and stack traces (default: 20 lines)
+errors() {
+    if [ -f "$ERROR_LOG_FILE" ]; then
+        tail -n 20 "$ERROR_LOG_FILE"
+    else
+        echo "No error logs available."
+    fi
+}
+
+# Set the bot’s presence status (e.g., online, idle, dnd)
+setstatus() {
+    require_token
+    STATUS="$1"
+    [ -z "$STATUS" ] && error "Usage: aura setstatus [status]"
+    echo "Setting bot status to '$STATUS'..."
+    echo "$STATUS" > "$HOME/.aura_status"
+}
+
+# Set bot activity (e.g., Playing, Watching, Listening)
+setactivity() {
+    require_token
+    TYPE="$1"
+    shift
+    MESSAGE="$*"
+    [ -z "$TYPE" ] || [ -z "$MESSAGE" ] && error "Usage: aura setactivity [type] [message]"
+    echo "Setting bot activity: Type='$TYPE', Message='$MESSAGE'"
+    echo "$TYPE: $MESSAGE" > "$HOME/.aura_activity"
+}
+
+# Blacklist a guild (ban a server from using the bot)
+blacklistguild() {
+    require_token
+    GUILD_ID="$1"
+    [ -z "$GUILD_ID" ] && error "Usage: aura blacklistguild [guild_id]"
+    echo "$GUILD_ID" >> "$HOME/.aura_blacklist"
+    echo "Guild '$GUILD_ID' added to blacklist."
+}
+
+# Remove a guild from the blacklist
+whitelistguild() {
+    require_token
+    GUILD_ID="$1"
+    [ -z "$GUILD_ID" ] && error "Usage: aura whitelistguild [guild_id]"
+    if [ -f "$HOME/.aura_blacklist" ]; then
+        grep -v "^$GUILD_ID$" "$HOME/.aura_blacklist" > "$HOME/.aura_blacklist.tmp" && mv "$HOME/.aura_blacklist.tmp" "$HOME/.aura_blacklist"
+        echo "Guild '$GUILD_ID' removed from blacklist."
+    else
+        echo "Blacklist file not found."
+    fi
+}
+
+# Add a webhook URL for bot logs
+webhook_add() {
+    require_token
+    URL="$1"
+    [ -z "$URL" ] && error "Usage: aura webhook add [url]"
+    echo "$URL" >> "$WEBHOOK_FILE"
+    echo "Webhook '$URL' added."
+}
+
+# Remove a webhook URL from the bot
+webhook_remove() {
+    require_token
+    URL="$1"
+    [ -z "$URL" ] && error "Usage: aura webhook remove [url]"
+    if [ -f "$WEBHOOK_FILE" ]; then
+        grep -v "^$URL$" "$WEBHOOK_FILE" > "$WEBHOOK_FILE.tmp" && mv "$WEBHOOK_FILE.tmp" "$WEBHOOK_FILE"
+        echo "Webhook '$URL' removed."
+    else
+        echo "No webhook file found."
+    fi
+}
+
+# List all guilds the bot is in
+guilds() {
+    require_token
+    if [ -f "$GUILDS_FILE" ]; then
+        cat "$GUILDS_FILE"
+    else
+        echo "No guilds found."
+    fi
+}
+
+# Make the bot leave a specific guild
+leaveguild() {
+    require_token
+    GUILD_ID="$1"
+    [ -z "$GUILD_ID" ] && error "Usage: aura leaveguild [guild_id]"
+    if [ -f "$GUILDS_FILE" ]; then
+        grep -v "^$GUILD_ID$" "$GUILDS_FILE" > "$GUILDS_FILE.tmp" && mv "$GUILDS_FILE.tmp" "$GUILDS_FILE"
+        echo "Bot has left guild '$GUILD_ID'."
+    else
+        echo "Guild list not found."
+    fi
+}
+
+####################################
+# Command-Line Interface
+####################################
+
 case "$1" in
     help)
         echo -e "\n✨ Aura CLI - Help Menu ✨\n"
@@ -142,29 +347,47 @@ case "$1" in
         echo -e "   Stops the bot, regardless of how it was started.\n"
         echo -e "🔹 \033[1muptime\033[0m"
         echo -e "   Displays the uptime of the bot.\n"
+        echo -e "🔹 \033[1mdebug\033[0m"
+        echo -e "   Displays internal bot debugging information.\n"
+        echo -e "🔹 \033[1mstatus\033[0m"
+        echo -e "   Shows bot uptime, CPU/memory usage, system load, and ping.\n"
+        echo -e "🔹 \033[1mlogs [lines]\033[0m"
+        echo -e "   Fetches the latest logs from the bot (default: 20 lines).\n"
+        echo -e "🔹 \033[1merrors\033[0m"
+        echo -e "   Shows the latest errors and stack traces.\n"
+        echo -e "🔹 \033[1msetstatus [status]\033[0m"
+        echo -e "   Sets the bot’s presence (e.g., online, idle, dnd).\n"
+        echo -e "🔹 \033[1msetactivity [type] [message]\033[0m"
+        echo -e "   Sets bot activity (e.g., Playing, Watching, Listening).\n"
+        echo -e "🔹 \033[1mblacklistguild [guild_id]\033[0m"
+        echo -e "   Bans a server from using the bot.\n"
+        echo -e "🔹 \033[1mwhitelistguild [guild_id]\033[0m"
+        echo -e "   Removes a server from the blacklist.\n"
+        echo -e "🔹 \033[1mwebhook [add|remove] [url]\033[0m"
+        echo -e "   Adds or removes a webhook for bot logs.\n"
+        echo -e "🔹 \033[1mguilds\033[0m"
+        echo -e "   Lists all guilds the bot is in.\n"
+        echo -e "🔹 \033[1mleaveguild [guild_id]\033[0m"
+        echo -e "   Makes the bot leave a specific server.\n"
+        echo -e "🔹 \033[1mset-token [token]\033[0m"
+        echo -e "   Sets the bot's token (mandatory for certain commands).\n"
+        echo -e "🔹 \033[1mremove-token\033[0m"
+        echo -e "   Removes the bot's token.\n"
         echo -e "Example usage:\n"
-        echo -e "  aura run server.js\n  aura run server.js -b\n  aura restart server.js\n  aura restart server.js -b\n  aura stop\n  aura uptime\n"
+        echo -e "  aura run server.js\n  aura run server.js -b\n  aura restart server.js\n  aura restart server.js -b\n  aura stop\n  aura uptime\n  aura debug\n  aura status\n  aura logs 30\n  aura errors\n  aura setstatus idle\n  aura setactivity Playing \"Chess with AI\"\n  aura blacklistguild 123456789\n  aura whitelistguild 123456789\n  aura webhook add https://example.com/webhook\n  aura webhook remove https://example.com/webhook\n  aura guilds\n  aura leaveguild 123456789\n  aura set-token YOUR_TOKEN_HERE\n  aura remove-token\n"
         ;;
     run)
-        if [ "$#" -lt 2 ]; then
-            error "Usage: aura run [file].js [-b]"
-        fi
+        [ "$#" -lt 2 ] && error "Usage: aura run [file].js [-b]"
         FILE="$2"
         BG=0
-        if [ "$3" = "-b" ]; then
-            BG=1
-        fi
+        [ "$3" = "-b" ] && BG=1
         run_bot "$FILE" "$BG"
         ;;
     restart)
-        if [ "$#" -lt 2 ]; then
-            error "Usage: aura restart [file].js [-b]"
-        fi
+        [ "$#" -lt 2 ] && error "Usage: aura restart [file].js [-b]"
         FILE="$2"
         ARG=""
-        if [ "$3" = "-b" ]; then
-            ARG="-b"
-        fi
+        [ "$3" = "-b" ] && ARG="-b"
         restart_bot "$FILE" "$ARG"
         ;;
     stop)
@@ -172,6 +395,52 @@ case "$1" in
         ;;
     uptime)
         uptime
+        ;;
+    debug)
+        debug_info
+        ;;
+    status)
+        status
+        ;;
+    logs)
+        LINES="${2:-20}"
+        logs "$LINES"
+        ;;
+    errors)
+        errors
+        ;;
+    setstatus)
+        setstatus "$2"
+        ;;
+    setactivity)
+        setactivity "$2" "$3"
+        ;;
+    blacklistguild)
+        blacklistguild "$2"
+        ;;
+    whitelistguild)
+        whitelistguild "$2"
+        ;;
+    webhook)
+        if [ "$2" = "add" ]; then
+            webhook_add "$3"
+        elif [ "$2" = "remove" ]; then
+            webhook_remove "$3"
+        else
+            error "Usage: aura webhook [add|remove] [url]"
+        fi
+        ;;
+    guilds)
+        guilds
+        ;;
+    leaveguild)
+        leaveguild "$2"
+        ;;
+    set-token)
+        set_token "$2"
+        ;;
+    remove-token)
+        remove_token
         ;;
     *)
         echo "Unknown command: $1"
