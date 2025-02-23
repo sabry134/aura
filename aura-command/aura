@@ -7,6 +7,13 @@ error() {
     exit 1
 }
 
+cleanup() {
+    if [ -f "$START_TIME_FILE" ]; then
+        rm "$START_TIME_FILE"  # Remove the start time file on exit
+        echo "Bot stopped, timer reset."
+    fi
+}
+
 uptime() {
     if [ ! -f "$START_TIME_FILE" ]; then
         echo "Error: Bot has not started yet."
@@ -49,6 +56,9 @@ case "$1" in
 
         # Save the start time to the file
         date +%s > "$START_TIME_FILE"
+
+        # Ensure cleanup happens on script exit (when the bot is stopped or aborted)
+        trap cleanup EXIT
 
         if [ "$BACKGROUND" -eq 1 ]; then
             command -v pm2 >/dev/null 2>&1 || error "pm2 is required but not installed. Install it with 'npm install -g pm2'"
