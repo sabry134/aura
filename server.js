@@ -1,131 +1,159 @@
-#!/usr/bin/env node
-require('dotenv').config();
-const { Command } = require('commander');
-const program = new Command();
-const Discord = require('discord.js');
+require("dotenv").config();
+const express = require("express");
+const {
+  Client,
+  GatewayIntentBits,
+  EmbedBuilder,
+  ButtonBuilder,
+  ActionRowBuilder,
+  ButtonStyle,
+  REST,
+  Routes,
+} = require("discord.js");
 
-// Create a Discord client instance with proper intents
-const client = new Discord.Client({
-  intents: [Discord.GatewayIntentBits.Guilds, Discord.GatewayIntentBits.GuildMessages]
+const app = express();
+const PORT = 8081;
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
 });
-const BOT_TOKEN = process.env.DISCORD_TOKEN;
 
-// --- Mode Functions ---
+const ADMIN_IDS = ["224253007246786561", "495265351270137883"];
 
-// Discord Bot Mode: Standard bot operations
-function discordBotMode() {
-  console.log("Starting Discord Bot Mode...");
-  client.once('ready', () => {
-    console.log(`Logged in as ${client.user.tag}!`);
-  });
-  client.on('messageCreate', message => {
-    if (message.content === '!ping') {
-      message.reply('Pong!');
-    }
-  });
-  client.login(BOT_TOKEN);
+if (
+  !process.env.BOT_TOKEN ||
+  !process.env.CLIENT_ID ||
+  !process.env.GUILD_ID ||
+  !process.env.VIDEO_ROLE_ID ||
+  !process.env.MEMBER_ROLE_ID ||
+  !process.env.CHANNEL_ID
+) {
+  console.error("Missing required environment variables. Check your .env file.");
+  process.exit(1);
 }
 
-// Linked Role Mode: Placeholder for linking roles with external systems
-function linkedRoleMode() {
-  console.log("Starting Linked Role Mode...");
-  // Insert logic here for role linking (e.g., syncing roles with an external API)
-  console.log("Linked Role Mode setup complete.");
+function createEmbed(title, description, color, thumbnail = null, fields = []) {
+  const embed = new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(description)
+    .setFooter({ text: `Joined at: ${new Date().toLocaleString()}` })
+    .setColor(color)
+    .addFields(fields);
+  if (thumbnail) {
+    embed.setThumbnail(thumbnail);
+  }
+  return embed;
 }
 
-// Discord Activity Mode: Set bot activity (presence)
-function discordActivityMode() {
-  console.log("Starting Discord Activity Mode...");
-  client.once('ready', () => {
-    client.user.setActivity('with code!', { type: 'PLAYING' });
-    console.log("Activity set to 'Playing with code!'");
-  });
-  client.login(BOT_TOKEN);
-}
+const commands = [
+  {
+    name: "remove-video",
+    description: "Remove the video role",
+    type: 1,
+  },
+];
 
-// --- CLI Command Definitions ---
+const rest = new REST({ version: "10" }).setToken(process.env.BOT_TOKEN);
+(async () => {
+  try {
+    console.log("Refreshing application (/) commands...");
+    await rest.put(
+      Routes.applicationGuildCommands(
+        process.env.CLIENT_ID,
+        process.env.GUILD_ID
+      ),
+      { body: commands }
+    );
+    console.log("Successfully registered commands.");
+  } catch (error) {
+    console.error("Error registering commands:", error);
+  }
+})();
 
-program
-  .version('1.0.0')
-  .description('Aura - Discord Bot Setup CLI');
+client.once("ready", () => {
+  console.log(`Logged in as ${client.user.tag}`);
+});
 
-program
-  .command('dev')
-  .description('Ready, set, code your bot to life! Starts development mode.')
-  .option('-m, --mode <mode>', 'Select mode: bot, linked, or activity', 'bot')
-  .action((options) => {
-    console.log("Development mode starting...");
-    switch (options.mode) {
-      case 'bot':
-        discordBotMode();
-        break;
-      case 'linked':
-        linkedRoleMode();
-        break;
-      case 'activity':
-        discordActivityMode();
-        break;
-      default:
-        console.log("Unknown mode. Please choose 'bot', 'linked', or 'activity'.");
+client.on("interactionCreate", async (interaction) => {
+  if (
+    interaction.isChatInputCommand() &&
+    interaction.commandName === "remove-video"
+  ) {
+    if (!ADMIN_IDS.includes(interaction.user.id)) {
+      return interaction.reply({
+        content: "❌ You do not have permission to use this command.",
+        ephemeral: true,
+      });
     }
-  });
 
-program
-  .command('start')
-  .description('Starts your bot in production mode.')
-  .action(() => {
-    console.log("Production mode starting...");
-    // For production, we’ll use the default bot mode.
-    discordBotMode();
-  });
+    const embed = createEmbed(
+      "Toggle Video Role",
+      "Don't feel like receiving a ping when a new video is released? Click the button below to remove your video role. Removing your reaction will add it back.",
+      "#00FF00"
+    );
 
-program
-  .command('build [plugin]')
-  .description('Builds your bot for production. Use "plugin" to optimize as an npm plugin.')
-  .action((plugin) => {
-    if (plugin === 'plugin') {
-      console.log("Building plugin for production...");
-      // Insert plugin build optimization logic here.
-    } else {
-      console.log("Building bot for production...");
-      // Insert production build logic here.
+    const button = new ButtonBuilder()
+      .setCustomId("toggle_video_role")
+      .setLabel("Remove video role")
+      .setStyle(ButtonStyle.Primary);
+
+    const row = new ActionRowBuilder().addComponents(button);
+
+    await interaction.reply({ embeds: [embed], components: [row] });
+  }
+});
+
+client.on("interactionCreate", async (interaction) => {
+  if (interaction.isButton() && interaction.customId === "toggle_video_role") {
+    const roleId = process.env.VIDEO_ROLE_ID;
+    const member = interaction.member;
+
+    if (!roleId) {
+      return interaction.reply({
+        content: "Error: Video role ID is not configured.",
+        ephemeral: true,
+      });
     }
-  });
 
-program
-  .command('upgrade')
-  .description('Updates package and all installed plugins.')
-  .action(() => {
-    console.log("Upgrading package and plugins...");
-    // Insert upgrade logic here (e.g., calling npm update or similar).
-  });
+    try {
+      if (member.roles.cache.has(roleId)) {
+        await member.roles.remove(roleId);
+        await interaction.reply({
+          content: "✅ Video role removed.",
+          ephemeral: true,
+        });
+      } else {
+        await member.roles.add(roleId);
+        await interaction.reply({
+          content: "✅ Video role wasn't present, it was added.",
+          ephemeral: true,
+        });
+      }
+    } catch (error) {
+      console.error("Error toggling video role:", error);
+      await interaction.reply({
+        content: "⚠️ An error occurred while toggling the video role.",
+        ephemeral: true,
+      });
+    }
+  }
+});
 
-program
-  .command('deploy')
-  .description('Deploys your bot to server!')
-  .action(() => {
-    console.log("Deploying bot to server...");
-    // Insert deployment logic here.
-  });
+app.get("/", (req, res) => {
+  res.send("Hello! The bot is running.");
+});
 
-program
-  .command('invite')
-  .description('Generates a link for servers to add your bot.')
-  .action(() => {
-    console.log("Generating invite link...");
-    const clientId = process.env.CLIENT_ID;
-    const permissions = 8; // Example: Admin permissions
-    const inviteLink = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&permissions=${permissions}&scope=bot%20applications.commands`;
-    console.log("Invite Link:", inviteLink);
-  });
+app.head("/health", (req, res) => {
+  res.status(200).end();
+});
 
-program
-  .command('stop')
-  .description('Stops the bot if it is running.')
-  .action(() => {
-    console.log("Stopping bot...");
-    client.destroy();
-    process.exit(0);
-  });
+app.listen(PORT, () => {
+  console.log(`Server running at http://localhost:${PORT}`);
+});
 
-program.parse(process.argv);
+client.login(process.env.BOT_TOKEN);

@@ -1,8 +1,24 @@
 #!/bin/sh
 
+START_TIME=$(date +%s)  # Record the start time when the script is first run
+
 error() {
     echo "Error: $1" >&2
     exit 1
+}
+
+uptime() {
+    CURRENT_TIME=$(date +%s)
+    DIFF=$((CURRENT_TIME - START_TIME))
+
+    # Convert seconds into days, hours, minutes, and seconds
+    DAYS=$((DIFF / 86400))
+    HOURS=$(( (DIFF % 86400) / 3600 ))
+    MINUTES=$(( (DIFF % 3600) / 60 ))
+    SECONDS=$((DIFF % 60))
+
+    # Display uptime in a readable format
+    echo "Bot uptime: ${DAYS}d ${HOURS}h ${MINUTES}m ${SECONDS}s"
 }
 
 case "$1" in
@@ -33,6 +49,9 @@ case "$1" in
             echo "Running '$FILE' normally..."
             node "$FILE"
         fi
+        ;;
+    uptime)
+        uptime  # Call the uptime function
         ;;
     *)
         echo "Unknown command: $1"

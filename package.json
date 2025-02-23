@@ -1,23 +1,7 @@
 {
-  "name": "auraflux",
-  "version": "1.0.2",
-  "description": "A CLI tool to easily set up and manage your Discord bot.",
-  "main": "server.js",
-  "bin": {
-    "auraflux": "./server.js"
-  },
   "dependencies": {
-    "commander": "^10.0.1",
     "discord.js": "^14.18.0",
-    "dotenv": "^16.4.7"
-  },
-  "keywords": [
-    "discord",
-    "bot",
-    "cli",
-    "npm",
-    "setup"
-  ],
-  "author": "Your Name",
-  "license": "MIT"
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
 }
