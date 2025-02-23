@@ -1,0 +1,3 @@
+echo '#!/bin/sh' > aura
+echo 'echo "Aura CLI - Help Menu"' >> aura
+chmod +x aura

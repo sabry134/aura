@@ -40,15 +40,15 @@ BRANCH="main"
 
 echo "Installing aura from branch ${BRANCH}..."
 
-# Construct download URL (ensure your asset naming and location match)
-BINARY_NAME="aura_${OS_NAME}_${ARCH_NAME}.zip"
+# Set the asset name to the zip file containing the aura binary.
+# Adjust the naming convention if your asset is named differently.
+BINARY_NAME="aura.zip"
 DOWNLOAD_URL="https://raw.githubusercontent.com/sabry134/aura/${BRANCH}/aura-command/${BINARY_NAME}"
 
 # Create a temporary directory for download and extraction
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-# Download the asset
 echo "Downloading from ${DOWNLOAD_URL}..."
 curl -fsSL "$DOWNLOAD_URL" -o "${TMP_DIR}/${BINARY_NAME}"
 
@@ -60,10 +60,11 @@ else
     mkdir -p "$INSTALL_DIR"
 fi
 
-# Unzip the downloaded archive
+echo "Extracting the binary..."
+# Unzip the downloaded asset
 unzip -o "${TMP_DIR}/${BINARY_NAME}" -d "${TMP_DIR}" >/dev/null 2>&1
 
-# Find the aura binary (assumes the binary file name starts with "aura")
+# Find the aura binary (assumes its name is either "aura" or starts with "aura_v")
 AURA_BINARY=$(find "${TMP_DIR}" -type f \( -name "aura" -o -name "aura_v*" \) | head -n 1)
 if [ -z "$AURA_BINARY" ]; then
     error "Could not find aura binary in the archive"
