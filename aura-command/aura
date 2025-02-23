@@ -51,7 +51,7 @@ case "$1" in
         fi
         ;;
     uptime)
-        uptime  # Call the uptime function
+        uptime
         ;;
     *)
         echo "Unknown command: $1"
