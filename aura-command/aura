@@ -253,9 +253,17 @@ setstatus() {
     [ -z "$STATUS" ] && error "Usage: aura setstatus [status]"
     echo "Setting bot status to '$STATUS'..."
     echo "$STATUS" > "$HOME/.aura_status"
+    # If the bot is running, send SIGHUP so it reloads its config
+    if [ -f "$RUNNING_PID_FILE" ]; then
+        PID=$(cat "$RUNNING_PID_FILE")
+        if kill -0 "$PID" 2>/dev/null; then
+            kill -HUP "$PID"
+            echo "Signal sent to bot to update status."
+        fi
+    fi
 }
 
-# Set bot activity (e.g., Playing, Watching, Listening) and automatically restart the bot
+# Set bot activity (e.g., Playing, Watching, Listening) without restarting the bot
 setactivity() {
     require_token
     TYPE="$1"
@@ -264,16 +272,13 @@ setactivity() {
     [ -z "$TYPE" ] || [ -z "$MESSAGE" ] && error "Usage: aura setactivity [type] [message]"
     echo "Setting bot activity: Type='$TYPE', Message='$MESSAGE'"
     echo "$TYPE: $MESSAGE" > "$HOME/.aura_activity"
-    echo "Activity set. Restarting bot to apply changes..."
-    if [ -f "$BOT_CONFIG_FILE" ]; then
-        read LAST_FILE LAST_BG < "$BOT_CONFIG_FILE"
-        if [ "$LAST_BG" -eq 1 ]; then
-            restart_bot "$LAST_FILE" "-b"
-        else
-            restart_bot "$LAST_FILE" ""
+    # If the bot is running, send SIGHUP so it reloads its config
+    if [ -f "$RUNNING_PID_FILE" ]; then
+        PID=$(cat "$RUNNING_PID_FILE")
+        if kill -0 "$PID" 2>/dev/null; then
+            kill -HUP "$PID"
+            echo "Signal sent to bot to update activity."
         fi
-    else
-        echo "No previous bot configuration found. Please run 'aura run [file]' first."
     fi
 }
 
@@ -282,6 +287,11 @@ remove_activity() {
     if [ -f "$HOME/.aura_activity" ]; then
         rm "$HOME/.aura_activity"
         echo "Activity removed."
+        # Notify bot if running
+        if [ -f "$RUNNING_PID_FILE" ]; then
+            PID=$(cat "$RUNNING_PID_FILE")
+            kill -HUP "$PID" 2>/dev/null && echo "Signal sent to bot to update activity."
+        fi
     else
         echo "No activity set."
     fi
@@ -324,14 +334,14 @@ webhook_remove() {
     URL="$1"
     [ -z "$URL" ] && error "Usage: aura webhook remove [url]"
     if [ -f "$WEBHOOK_FILE" ]; then
-        grep -v "^$URL$" "$WEBHOOK_FILE" > "$WEBHOOK_FILE.tmp" && mv "$WEBHOOK_FILE.tmp" "$WEBHOOK_FILE"
+        grep -v "^$URL$" "$WEBHOOK_FILE" > "$WEBHOOK_FILE.tmp" && mv "$HOME/.aura_webhooks.tmp" "$WEBHOOK_FILE"
         echo "Webhook '$URL' removed."
     else
         echo "No webhook file found."
     fi
 }
 
-# List all guilds the bot is in via Discord API (if permitted) without extra debug info
+# List all guilds the bot is in via Discord API (if permitted)
 guilds() {
     require_token
     TOKEN=$(cat "$TOKEN_FILE")
@@ -384,9 +394,9 @@ case "$1" in
         echo -e "🔹 \033[1merrors\033[0m"
         echo -e "   Shows the latest errors and stack traces.\n"
         echo -e "🔹 \033[1msetstatus [status]\033[0m"
-        echo -e "   Sets the bot’s presence (e.g., online, idle, dnd).\n"
+        echo -e "   Sets the bot’s presence (e.g., online, idle, dnd) without restarting the bot.\n"
         echo -e "🔹 \033[1msetactivity [type] [message]\033[0m"
-        echo -e "   Sets bot activity (e.g., Playing, Watching, Listening) and automatically restarts the bot.\n"
+        echo -e "   Sets bot activity (e.g., Playing, Watching, Listening) without restarting the bot.\n"
         echo -e "🔹 \033[1mremove-activity\033[0m"
         echo -e "   Removes the bot’s activity setting.\n"
         echo -e "🔹 \033[1mblacklistguild [guild_id]\033[0m"
