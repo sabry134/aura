@@ -1,6 +1,6 @@
 #!/bin/sh
 
-START_TIME=$(date +%s)  # Record the start time when the script is first run
+START_TIME=0  # Initialize the start time variable
 
 error() {
     echo "Error: $1" >&2
@@ -8,6 +8,11 @@ error() {
 }
 
 uptime() {
+    if [ "$START_TIME" -eq 0 ]; then
+        echo "Error: Bot has not started yet."
+        exit 1
+    fi
+
     CURRENT_TIME=$(date +%s)
     DIFF=$((CURRENT_TIME - START_TIME))
 
@@ -40,6 +45,8 @@ case "$1" in
         if [ ! -f "$FILE" ]; then
             error "File '$FILE' not found."
         fi
+
+        START_TIME=$(date +%s)  # Set the start time when `aura run` is executed
 
         if [ "$BACKGROUND" -eq 1 ]; then
             command -v pm2 >/dev/null 2>&1 || error "pm2 is required but not installed. Install it with 'npm install -g pm2'"
