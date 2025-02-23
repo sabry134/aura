@@ -1,8 +1,38 @@
 #!/bin/sh
 
+error() {
+    echo "Error: $1" >&2
+    exit 1
+}
+
 case "$1" in
     help)
         echo "Aura CLI - Help Menu"
+        ;;
+    run)
+        if [ "$#" -lt 2 ]; then
+            error "Usage: aura run [file].js [-b]"
+        fi
+
+        FILE=$2
+        BACKGROUND=0
+
+        if [ "$3" = "-b" ]; then
+            BACKGROUND=1
+        fi
+
+        if [ ! -f "$FILE" ]; then
+            error "File '$FILE' not found."
+        fi
+
+        if [ "$BACKGROUND" -eq 1 ]; then
+            command -v pm2 >/dev/null 2>&1 || error "pm2 is required but not installed. Install it with 'npm install -g pm2'"
+            echo "Running '$FILE' in background using pm2..."
+            pm2 start "$FILE" --name "aura-$FILE"
+        else
+            echo "Running '$FILE' normally..."
+            node "$FILE"
+        fi
         ;;
     *)
         echo "Unknown command: $1"
