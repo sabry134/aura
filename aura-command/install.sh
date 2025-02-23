@@ -28,11 +28,19 @@ fi
 mv "${TMP_DIR}/aura" "${INSTALL_DIR}/aura"
 chmod +x "${INSTALL_DIR}/aura"
 
-if [ -x "${INSTALL_DIR}/aura" ]; then
-    echo "✅ Successfully installed aura to ${INSTALL_DIR}/aura"
-    echo
+echo "✅ Successfully installed aura to ${INSTALL_DIR}/aura"
+
+# Ensure the binary is available in the user's PATH
+if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
+    echo "Adding $INSTALL_DIR to PATH..."
+    echo "export PATH=\"$HOME/.local/bin:\$PATH\"" >> ~/.bashrc
+    source ~/.bashrc  # Reload bashrc (or use source ~/.zshrc for zsh users)
+fi
+
+# Verify aura command works
+if command -v aura >/dev/null 2>&1; then
     echo "Running 'aura help':"
-    "${INSTALL_DIR}/aura" help
+    aura help
 else
-    error "Installation failed"
+    error "Aura binary not found in PATH"
 fi
