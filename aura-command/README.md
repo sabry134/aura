@@ -3,7 +3,7 @@ curl -fsSL https://raw.githubusercontent.com/sabry134/aura/refs/heads/main/aura-
 
 
 
-zip aura.zip aura 
+zip aura.zip aura && push "[ADD] server fix"
 
 
 /aura restart → Restart the bot

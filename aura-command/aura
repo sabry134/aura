@@ -53,7 +53,17 @@ restart() {
 
     # Restart the bot
     echo "Restarting the bot..."
-    aura run "$2" "$3"  # Restart the run command with the same arguments
+
+    # Check if pm2 is managing the process
+    if command -v pm2 >/dev/null 2>&1; then
+        # Gracefully restart using pm2
+        pm2 restart aura-server.js || error "Failed to restart bot with pm2."
+        echo "Bot restarted using pm2."
+    else
+        echo "Running 'server.js' normally..."
+        node "$2" &
+        echo "$!" > "$RUNNING_PID_FILE"  # Store the process ID
+    fi
 }
 
 case "$1" in
@@ -62,7 +72,7 @@ case "$1" in
         echo -e "Here are the available commands for Aura CLI:\n"
 
         echo -e "🔹 \033[1mrun [file.js] [-b]\033[0m"
-        echo -e "   - Runs the specified file. Optionally, use the '-b' flag to run it in the background.\n"
+        echo -e "   - Runs the specified file. Optionally, use the '-b' flag to run it in the background using pm2.\n"
 
         echo -e "🔹 \033[1mrestart [file.js] [-b]\033[0m"
         echo -e "   - Restarts the bot. It will first stop the current process and then re-run the specified file.\n"
@@ -100,7 +110,13 @@ case "$1" in
         if [ "$BACKGROUND" -eq 1 ]; then
             command -v pm2 >/dev/null 2>&1 || error "pm2 is required but not installed. Install it with 'npm install -g pm2'"
             echo "Running '$FILE' in background using pm2..."
-            pm2 start "$FILE" --name "aura-$FILE"
+
+            # Check if the process is already running on pm2
+            if pm2 list | grep -q "$FILE"; then
+                echo "Bot is already running in the background using pm2."
+            else
+                pm2 start "$FILE" --name "aura-$FILE"
+            fi
 
             # Store the pm2 process ID
             PM2_PID=$(pm2 pid "$FILE")
